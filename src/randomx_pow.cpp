@@ -3,6 +3,7 @@
 
 #include <randomx_pow.h>
 
+#include <chain.h>
 #include <primitives/block.h>
 #include <serialize.h>
 
@@ -78,6 +79,36 @@ private:
 thread_local RandomXContext g_randomx_context;
 
 } // namespace
+
+const CBlockIndex* GetRandomXKeyBlock(const CBlockIndex* pindexPrev, int block_height)
+{
+    if (block_height <= 0) return nullptr;
+
+    // RandomX recommends changing the key when height % 2048 == 64,
+    // using the block 64 blocks earlier as the key block. For the first
+    // epoch, use genesis as the key block.
+    const int key_height = block_height < 64
+                               ? 0
+                               : ((block_height - 64) / 2048) * 2048;
+
+    if (key_height == 0) {
+        const CBlockIndex* cursor = pindexPrev;
+        if (!cursor) return nullptr;
+        return cursor->GetAncestor(0);
+    }
+
+    if (!pindexPrev || pindexPrev->nHeight < key_height) return nullptr;
+    return pindexPrev->GetAncestor(key_height);
+}
+
+uint256 GetRandomXPoWKey(const CBlockIndex* pindexPrev, int block_height)
+{
+    const CBlockIndex* key_block = GetRandomXKeyBlock(pindexPrev, block_height);
+    if (!key_block) {
+        throw std::runtime_error("RandomX key block is unavailable");
+    }
+    return key_block->GetBlockHash();
+}
 
 uint256 GetRandomXPoWHash(const CBlockHeader& header, const uint256& key)
 {
