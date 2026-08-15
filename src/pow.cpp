@@ -8,6 +8,7 @@
 #include <arith_uint256.h>
 #include <chain.h>
 #include <primitives/block.h>
+#include <randomx_pow.h>
 #include <uint256.h>
 #include <util/check.h>
 
@@ -66,8 +67,8 @@ unsigned int CalculateNextWorkRequired(const CBlockIndex* pindexLast, int64_t nF
     // Special difficulty rule for Testnet4
     if (params.enforce_BIP94) {
         // Here we use the first block of the difficulty period. This way
-        // the real difficulty is always preserved in the first block as
-        // it is not allowed to use the min-difficulty exception.
+        // the real difficulty is always preserved in the first block as it
+        // is not allowed to use the min-difficulty exception.
         int nHeightFirst = pindexLast->nHeight - (params.DifficultyAdjustmentInterval()-1);
         const CBlockIndex* pindexFirst = pindexLast->GetAncestor(nHeightFirst);
         bnNew.SetCompact(pindexFirst->nBits);
@@ -108,8 +109,6 @@ bool PermittedDifficultyTransition(const Consensus::Params& params, int64_t heig
             largest_difficulty_target = pow_limit;
         }
 
-        // Round and then compare this new calculated value to what is
-        // observed.
         arith_uint256 maximum_new_target;
         maximum_new_target.SetCompact(largest_difficulty_target.GetCompact());
         if (maximum_new_target < observed_new_target) return false;
@@ -124,8 +123,6 @@ bool PermittedDifficultyTransition(const Consensus::Params& params, int64_t heig
             smallest_difficulty_target = pow_limit;
         }
 
-        // Round and then compare this new calculated value to what is
-        // observed.
         arith_uint256 minimum_new_target;
         minimum_new_target.SetCompact(smallest_difficulty_target.GetCompact());
         if (minimum_new_target > observed_new_target) return false;
@@ -168,4 +165,22 @@ bool CheckProofOfWorkImpl(uint256 hash, unsigned int nBits, const Consensus::Par
         return false;
 
     return true;
+}
+
+bool CheckRandomXProofOfWork(const CBlockHeader& block,
+                             unsigned int nBits,
+                             const Consensus::Params& params,
+                             const CBlockIndex* pindexPrev,
+                             int block_height)
+{
+    if (EnableFuzzDeterminism()) {
+        return (block.GetHash().data()[31] & 0x80) == 0;
+    }
+
+    auto bnTarget{DeriveTarget(nBits, params.powLimit)};
+    if (!bnTarget) return false;
+
+    const uint256 key{GetRandomXPoWKey(pindexPrev, block_height)};
+    const uint256 hash{GetRandomXPoWHash(block, key)};
+    return UintToArith256(hash) <= *bnTarget;
 }
