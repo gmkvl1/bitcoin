@@ -6,17 +6,24 @@
 
 #include <uint256.h>
 
-#include <span>
-
 class CBlockHeader;
+class CBlockIndex;
+
+/**
+ * Return the RandomX key block for a block at block_height.
+ *
+ * The key changes every 2048 blocks with a 64-block delay. Therefore blocks
+ * [0, 2111] use the genesis block as their key block, blocks [2112, 4159]
+ * use height 2048, and so on.
+ */
+const CBlockIndex* GetRandomXKeyBlock(const CBlockIndex* pindexPrev, int block_height);
+
+/** Return the 32-byte RandomX key derived from the key block hash. */
+uint256 GetRandomXPoWKey(const CBlockIndex* pindexPrev, int block_height);
 
 /**
  * Calculate the RandomX proof-of-work digest for a serialized Bitcoin block
  * header using the consensus-selected key.
- *
- * The block identifier remains separate from the PoW digest. This lets the
- * consensus migration replace SHA-256d PoW without accidentally changing all
- * block-hash semantics at the same time.
  */
 uint256 GetRandomXPoWHash(const CBlockHeader& header, const uint256& key);
 
