@@ -5,7 +5,6 @@
 
 #include <primitives/block.h>
 #include <serialize.h>
-#include <util/byte_vector.h>
 
 #include <randomx.h>
 
@@ -49,9 +48,8 @@ public:
 
         Reset();
 
-        // Use the reference implementation's portable light-verification mode
-        // for the consensus path. Mining can use a full-memory/JIT context in
-        // the mining backend without changing the resulting digest.
+        // Consensus verification uses RandomX light mode. Mining can use a
+        // full-memory/JIT context without changing the resulting digest.
         const randomx_flags flags = RANDOMX_FLAG_DEFAULT;
         m_cache = randomx_alloc_cache(flags);
         if (!m_cache) {
@@ -73,7 +71,7 @@ public:
 private:
     randomx_cache* m_cache{nullptr};
     randomx_vm* m_vm{nullptr};
-    std::array<unsigned char, RANDOMX_HASH_SIZE> m_key{};
+    std::array<unsigned char, 32> m_key{};
     bool m_initialized{false};
 };
 
@@ -86,12 +84,11 @@ uint256 GetRandomXPoWHash(const CBlockHeader& header, const uint256& key)
     DataStream stream;
     stream << header;
 
-    const auto bytes{MakeByteSpan(stream) };
     uint256 result;
     randomx_calculate_hash(
         g_randomx_context.GetVM(key),
-        bytes.data(),
-        bytes.size(),
+        stream.data(),
+        stream.size(),
         result.begin());
     return result;
 }
