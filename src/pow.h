@@ -9,6 +9,7 @@
 #include <consensus/params.h>
 
 #include <cstdint>
+#include <optional>
 
 class CBlockHeader;
 class CBlockIndex;
@@ -32,6 +33,17 @@ unsigned int CalculateNextWorkRequired(const CBlockIndex* pindexLast, int64_t nF
 /** Check whether a block hash satisfies the proof-of-work requirement specified by nBits */
 bool CheckProofOfWork(uint256 hash, unsigned int nBits, const Consensus::Params&);
 bool CheckProofOfWorkImpl(uint256 hash, unsigned int nBits, const Consensus::Params&);
+
+/**
+ * Check a RandomX proof using the consensus-selected key block for the
+ * candidate block height. This is kept separate from CheckProofOfWork() until
+ * the consensus activation point is wired into block-header validation.
+ */
+bool CheckRandomXProofOfWork(const CBlockHeader& block,
+                             unsigned int nBits,
+                             const Consensus::Params& params,
+                             const CBlockIndex* pindexPrev,
+                             int block_height);
 
 /**
  * Return false if the proof-of-work requirement specified by new_nbits at a
