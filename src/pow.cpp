@@ -177,6 +177,11 @@ bool CheckRandomXProofOfWork(const CBlockHeader& block,
         return (block.GetHash().data()[31] & 0x80) == 0;
     }
 
+    // A RandomX proof is chain-contextual: the consensus key is selected from
+    // the previous block index. Never fall back to the legacy SHA-256d hash
+    // when that context is unavailable.
+    if (!pindexPrev || block_height <= 0) return false;
+
     auto bnTarget{DeriveTarget(nBits, params.powLimit)};
     if (!bnTarget) return false;
 
