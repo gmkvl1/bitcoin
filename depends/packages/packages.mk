@@ -1,6 +1,7 @@
 packages:=
 
 boost_packages = boost
+randomx_packages = randomx
 
 qrencode_linux_packages = qrencode
 qrencode_freebsd_packages = qrencode
