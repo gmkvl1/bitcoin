@@ -6,7 +6,7 @@ $(package)_sha256_hash=cfa62704ab3c2fe85128a9987055edac44d02c7fd284673dec45f4f1f
 $(package)_build_subdir=build
 
 define $(package)_set_vars
-  $(package)_config_opts := -DARCH=generic -DBUILD_SHARED_LIBS=OFF -DARCH=native
+  $(package)_config_opts := -DARCH=generic -DBUILD_SHARED_LIBS=OFF
   $(package)_config_opts += -DBUILD_TESTING=OFF
 endef
 
