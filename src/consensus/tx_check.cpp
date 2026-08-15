@@ -16,6 +16,36 @@
 #include <utility>
 #include <vector>
 
+namespace {
+
+bool CheckOpReturnPayload(const CScript& script)
+{
+    if (script.empty() || script[0] != OP_RETURN) return true;
+
+    size_t payload_size{0};
+    CScript::const_iterator pc{script.begin() + 1};
+    CScript::const_iterator pend{script.end()};
+
+    // An OP_RETURN output is an unspendable data carrier. Consensus permits
+    // the normal Bitcoin script language here, but limits the amount of data
+    // carried by pushes to keep the base layer from becoming a data-storage
+    // mechanism. Non-push opcodes do not contribute payload bytes.
+    while (pc < pend) {
+        opcodetype opcode;
+        std::vector<unsigned char> pushed_data;
+        if (!script.GetOp(pc, opcode, pushed_data)) return false;
+
+        if (opcode <= OP_PUSHDATA4) {
+            payload_size += pushed_data.size();
+            if (payload_size > MAX_OP_RETURN_PAYLOAD_SIZE) return false;
+        }
+    }
+
+    return true;
+}
+
+} // namespace
+
 bool CheckTransaction(const CTransaction& tx, TxValidationState& state)
 {
     // Basic checks that don't depend on any context
@@ -39,6 +69,10 @@ bool CheckTransaction(const CTransaction& tx, TxValidationState& state)
         nValueOut += txout.nValue;
         if (!MoneyRange(nValueOut))
             return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-txouttotal-toolarge");
+
+        if (!CheckOpReturnPayload(txout.scriptPubKey)) {
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-opreturn-oversize");
+        }
     }
 
     // Check for duplicate inputs (see CVE-2018-17144)
