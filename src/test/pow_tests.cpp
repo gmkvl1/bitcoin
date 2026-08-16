@@ -34,6 +34,8 @@ BOOST_AUTO_TEST_CASE(project_mainnet_genesis)
     BOOST_CHECK(chain_params->GetAvailableSnapshotHeights().empty());
     BOOST_CHECK(consensus.nMinimumChainWork.IsNull());
     BOOST_CHECK(consensus.defaultAssumeValid.IsNull());
+    BOOST_CHECK(consensus.script_flag_exceptions.empty());
+    BOOST_CHECK(consensus.BIP34Hash.IsNull());
 }
 
 /* Test calculation of next difficulty target with no constraints applying */
