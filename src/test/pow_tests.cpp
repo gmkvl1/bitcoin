@@ -5,6 +5,7 @@
 #include <chain.h>
 #include <chainparams.h>
 #include <pow.h>
+#include <project_genesis.h>
 #include <test/util/random.h>
 #include <test/util/common.h>
 #include <test/util/setup_common.h>
@@ -13,6 +14,27 @@
 #include <boost/test/unit_test.hpp>
 
 BOOST_FIXTURE_TEST_SUITE(pow_tests, BasicTestingSetup)
+
+BOOST_AUTO_TEST_CASE(project_mainnet_genesis)
+{
+    const auto chain_params = CreateChainParams(*m_node.args, ChainType::MAIN);
+    const auto& consensus = chain_params->GetConsensus();
+    const auto& genesis = chain_params->GenesisBlock();
+
+    BOOST_CHECK_EQUAL(consensus.hashGenesisBlock, uint256{project_genesis::HASH});
+    BOOST_CHECK_EQUAL(genesis.GetHash(), uint256{project_genesis::HASH});
+    BOOST_CHECK_EQUAL(genesis.hashMerkleRoot, uint256{project_genesis::MERKLE_ROOT});
+    BOOST_CHECK_EQUAL(genesis.nTime, project_genesis::TIME);
+    BOOST_CHECK_EQUAL(genesis.nBits, project_genesis::NBITS);
+    BOOST_CHECK_EQUAL(genesis.nNonce, project_genesis::NONCE);
+    BOOST_CHECK_EQUAL(genesis.nVersion, project_genesis::VERSION);
+
+    BOOST_CHECK(chain_params->DNSSeeds().empty());
+    BOOST_CHECK(chain_params->FixedSeeds().empty());
+    BOOST_CHECK(chain_params->GetAvailableSnapshotHeights().empty());
+    BOOST_CHECK(consensus.nMinimumChainWork.IsNull());
+    BOOST_CHECK(consensus.defaultAssumeValid.IsNull());
+}
 
 /* Test calculation of next difficulty target with no constraints applying */
 BOOST_AUTO_TEST_CASE(get_next_work)
