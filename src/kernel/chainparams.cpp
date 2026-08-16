@@ -124,16 +124,14 @@ public:
         consensus.signet_blocks = false;
         consensus.signet_challenge.clear();
         consensus.nSubsidyHalvingInterval = 210000;
-        consensus.BIP34Height = 227931;
-        // Bitcoin's BIP34 block and script-validation exceptions are not part
-        // of this new chain. The activation schedule remains a separate
-        // launch decision.
+        // Current script rules apply from the start of this new chain.
+        consensus.BIP34Height = 1;
         consensus.BIP34Hash = uint256{};
-        consensus.BIP65Height = 388381; // 000000000000000004c2b624ed5d7756c508d90fd0da2c7c679febfa6c4735f0
-        consensus.BIP66Height = 363725; // 00000000000000000379eaa19dce8c9b722d46ae6a57c2f1a988119488b50931
-        consensus.CSVHeight = 419328; // 000000000000000004a1b34462cb8aeebd5799177f7a29cf28f2d1961716b5b5
-        consensus.SegwitHeight = 481824; // 0000000000000000001c8018d9cb3b742ef25114f27563e3fc4a1902167f9893
-        consensus.MinBIP9WarningHeight = 711648; // taproot activation height + miner confirmation window
+        consensus.BIP65Height = 1;
+        consensus.BIP66Height = 1;
+        consensus.CSVHeight = 1;
+        consensus.SegwitHeight = 0;
+        consensus.MinBIP9WarningHeight = 0;
         consensus.powLimit = uint256{"00000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffff"};
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
         consensus.nPowTargetSpacing = 10 * 60;
@@ -158,11 +156,11 @@ public:
          * The characters are rarely used upper ASCII, not valid as UTF-8, and produce
          * a large 32-bit integer with any alignment.
          */
-        pchMessageStart[0] = 0xf9;
-        pchMessageStart[1] = 0xbe;
-        pchMessageStart[2] = 0xb4;
-        pchMessageStart[3] = 0xd9;
-        nDefaultPort = 8333;
+        pchMessageStart[0] = 0xd3;
+        pchMessageStart[1] = 0x0a;
+        pchMessageStart[2] = 0xa3;
+        pchMessageStart[3] = 0xda;
+        nDefaultPort = 36660;
         nPruneAfterHeight = 100000;
         m_assumed_blockchain_size = 0;
         m_assumed_chain_state_size = 0;
@@ -176,13 +174,13 @@ public:
         // contact Bitcoin DNS or fixed seeds from a new network.
         vSeeds.clear();
 
-        base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,0);
-        base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1,5);
-        base58Prefixes[SECRET_KEY] =     std::vector<unsigned char>(1,128);
-        base58Prefixes[EXT_PUBLIC_KEY] = {0x04, 0x88, 0xB2, 0x1E};
-        base58Prefixes[EXT_SECRET_KEY] = {0x04, 0x88, 0xAD, 0xE4};
+        base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,73);
+        base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1,63);
+        base58Prefixes[SECRET_KEY] =     std::vector<unsigned char>(1,201);
+        base58Prefixes[EXT_PUBLIC_KEY] = {0x03, 0x0A, 0xA3, 0xDA};
+        base58Prefixes[EXT_SECRET_KEY] = {0x03, 0x0A, 0xA3, 0xDB};
 
-        bech32_hrp = "bc";
+        bech32_hrp = "w6";
 
         vFixedSeeds.clear();
 
