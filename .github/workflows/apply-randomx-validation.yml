@@ -20,49 +20,124 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
+          import re
 
+          # validation.cpp: keep CheckBlockHeader context-free. RandomX needs
+          # pindexPrev/height, so the actual PoW check belongs in the contextual
+          # header validation path.
           v = Path('src/validation.cpp')
           s = v.read_text()
           if '#include <randomx_pow.h>' not in s:
-              s = s.replace('#include <pow.h>\n', '#include <pow.h>\n#include <randomx_pow.h>\n', 1)
+              marker = '#include <pow.h>\n'
+              if marker not in s:
+                  raise SystemExit('pow.h include marker not found')
+              s = s.replace(marker, marker + '#include <randomx_pow.h>\n', 1)
 
-          old = '''static bool CheckBlockHeader(const CBlockHeader& block, BlockValidationState& state, const Consensus::Params& consensusParams, bool fCheckPOW = true)\n{\n    // Check proof of work matches claimed amount\n    if (fCheckPOW && !CheckProofOfWork(block.GetHash(), block.nBits, consensusParams))\n        return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "high-hash", "proof of work failed");\n\n    return true;\n}\n'''
-          new = '''static bool CheckBlockHeader(const CBlockHeader& block, BlockValidationState& state, const Consensus::Params& consensusParams, bool fCheckPOW = true)\n{\n    // RandomX PoW is contextual and is checked once pindexPrev is known.\n    (void)block;\n    (void)state;\n    (void)consensusParams;\n    (void)fCheckPOW;\n    return true;\n}\n'''
-          if old not in s:
-              raise SystemExit('expected CheckBlockHeader body not found')
-          s = s.replace(old, new, 1)
+          pattern = re.compile(
+              r'(static bool CheckBlockHeader\(const CBlockHeader& block,\s*'
+              r'BlockValidationState& state,\s*'
+              r'const Consensus::Params& consensusParams,\s*'
+              r'bool fCheckPOW = true\)\s*\{).*?\n\}',
+              re.S,
+          )
+          replacement = r'''\1
+    // RandomX PoW is contextual and is checked once pindexPrev is known.
+    (void)block;
+    (void)state;
+    (void)consensusParams;
+    (void)fCheckPOW;
+    return true;
+}'''
+          s, count = pattern.subn(replacement, s, count=1)
+          if count != 1:
+              raise SystemExit('CheckBlockHeader function not found')
 
-          old = '''    // Check proof of work\n    const Consensus::Params& consensusParams = chainman.GetConsensus();\n    if (block.nBits != GetNextWorkRequired(pindexPrev, &block, consensusParams))\n        return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "bad-diffbits", "incorrect proof of work");\n'''
-          new = '''    // Bitcoin difficulty/target rules remain unchanged; RandomX replaces only the PoW function.\n    const Consensus::Params& consensusParams = chainman.GetConsensus();\n    if (block.nBits != GetNextWorkRequired(pindexPrev, &block, consensusParams))\n        return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "bad-diffbits", "incorrect proof of work");\n    if (!CheckRandomXProofOfWork(block, block.nBits, consensusParams, pindexPrev, nHeight))\n        return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "high-hash", "proof of work failed");\n'''
-          if old not in s:
-              raise SystemExit('expected contextual PoW block not found')
-          s = s.replace(old, new, 1)
+          # ContextualCheckBlockHeader: preserve the existing nBits/difficulty
+          # validation and add the RandomX hash/target check immediately after it.
+          contextual = re.compile(
+              r'(static bool ContextualCheckBlockHeader\(.*?\n.*?'
+              r'const Consensus::Params& consensusParams = chainman\.GetConsensus\(\);\s*'
+              r'if \(block\.nBits != GetNextWorkRequired\(pindexPrev, &block, consensusParams\)\)\s*'
+              r'return state\.Invalid\(BlockValidationResult::BLOCK_INVALID_HEADER, "bad-diffbits", "incorrect proof of work"\);)',
+              re.S,
+          )
+          contextual_replacement = r'''\1
+    if (!CheckRandomXProofOfWork(block, block.nBits, consensusParams, pindexPrev, nHeight))
+        return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "high-hash", "proof of work failed");'''
+          s, count = contextual.subn(contextual_replacement, s, count=1)
+          if count != 1:
+              raise SystemExit('contextual difficulty validation block not found')
           v.write_text(s)
 
+          # validation.h declaration.
           h = Path('src/validation.h')
           hs = h.read_text()
           oldh = 'bool HasValidProofOfWork(std::span<const CBlockHeader> headers, const Consensus::Params& consensusParams);'
           newh = 'bool HasValidProofOfWork(std::span<const CBlockHeader> headers, const Consensus::Params& consensusParams, const CBlockIndex* pindexPrev);'
-          if oldh not in hs:
-              raise SystemExit('expected HasValidProofOfWork declaration not found')
-          h.write_text(hs.replace(oldh, newh, 1))
+          if oldh in hs:
+              h.write_text(hs.replace(oldh, newh, 1))
+          elif newh not in hs:
+              raise SystemExit('HasValidProofOfWork declaration not found')
 
-          old = '''bool HasValidProofOfWork(std::span<const CBlockHeader> headers, const Consensus::Params& consensusParams)\n{\n    return std::ranges::all_of(headers,\n                               [&](const auto& header) { return CheckProofOfWork(header.GetHash(), header.nBits, consensusParams); });\n}\n'''
-          new = '''bool HasValidProofOfWork(std::span<const CBlockHeader> headers, const Consensus::Params& consensusParams, const CBlockIndex* pindexPrev)\n{\n    if (headers.empty()) return true;\n    if (!pindexPrev) return true;\n\n    std::vector<CBlockIndex> synthetic;\n    synthetic.reserve(headers.size());\n    const CBlockIndex* prev = pindexPrev;\n    for (const CBlockHeader& header : headers) {\n        synthetic.emplace_back(header);\n        CBlockIndex* current = &synthetic.back();\n        current->pprev = prev;\n        current->nHeight = prev->nHeight + 1;\n        if (!CheckRandomXProofOfWork(header, header.nBits, consensusParams, prev, current->nHeight)) return false;\n        prev = current;\n    }\n    return true;\n}\n'''
-          if old not in s:
-              raise SystemExit('expected HasValidProofOfWork definition not found')
-          v.write_text(s.replace(old, new, 1))
+          # validation.cpp HasValidProofOfWork implementation.
+          s = v.read_text()
+          hp = re.compile(
+              r'bool HasValidProofOfWork\(std::span<const CBlockHeader> headers, const Consensus::Params& consensusParams\)\s*\{.*?\n\}',
+              re.S,
+          )
+          hnew = r'''bool HasValidProofOfWork(std::span<const CBlockHeader> headers, const Consensus::Params& consensusParams, const CBlockIndex* pindexPrev)
+{
+    if (headers.empty()) return true;
+    if (!pindexPrev) return true;
 
+    std::vector<CBlockIndex> synthetic;
+    synthetic.reserve(headers.size());
+    const CBlockIndex* prev = pindexPrev;
+    for (const CBlockHeader& header : headers) {
+        synthetic.emplace_back(header);
+        CBlockIndex* current = &synthetic.back();
+        current->pprev = prev;
+        current->nHeight = prev->nHeight + 1;
+        if (!CheckRandomXProofOfWork(header, header.nBits, consensusParams, prev, current->nHeight)) return false;
+        prev = current;
+    }
+    return true;
+}'''
+          s, count = hp.subn(hnew, s, count=1)
+          if count != 1:
+              raise SystemExit('HasValidProofOfWork implementation not found')
+          v.write_text(s)
+
+          # net_processing.cpp: locate the known predecessor for a header batch.
           n = Path('src/net_processing.cpp')
           ns = n.read_text()
-          old = '''bool PeerManagerImpl::CheckHeadersPoW(const std::vector<CBlockHeader>& headers, Peer& peer)\n{\n    // Do these headers have proof-of-work matching what's claimed?\n    if (!HasValidProofOfWork(headers, m_chainparams.GetConsensus())) {\n'''
-          new = '''bool PeerManagerImpl::CheckHeadersPoW(const std::vector<CBlockHeader>& headers, Peer& peer)\n{\n    const CBlockIndex* pindexPrev = nullptr;\n    {\n        LOCK(cs_main);\n        if (!headers.empty()) pindexPrev = m_chainman.m_blockman.LookupBlockIndex(headers.front().hashPrevBlock);\n    }\n\n    // RandomX PoW is contextual; defer unconnecting headers until their predecessor is known.\n    if (!HasValidProofOfWork(headers, m_chainparams.GetConsensus(), pindexPrev)) {\n'''
-          if old not in ns:
-              raise SystemExit('expected CheckHeadersPoW definition not found')
-          n.write_text(ns.replace(old, new, 1))
+          old = '''bool PeerManagerImpl::CheckHeadersPoW(const std::vector<CBlockHeader>& headers, Peer& peer)
+{
+    // Do these headers have proof-of-work matching what's claimed?
+    if (!HasValidProofOfWork(headers, m_chainparams.GetConsensus())) {'''
+          new = '''bool PeerManagerImpl::CheckHeadersPoW(const std::vector<CBlockHeader>& headers, Peer& peer)
+{
+    const CBlockIndex* pindexPrev = nullptr;
+    {
+        LOCK(cs_main);
+        if (!headers.empty()) pindexPrev = m_chainman.m_blockman.LookupBlockIndex(headers.front().hashPrevBlock);
+    }
+
+    // RandomX PoW is contextual; defer unconnecting headers until their predecessor is known.
+    if (!HasValidProofOfWork(headers, m_chainparams.GetConsensus(), pindexPrev)) {'''
+          if old in ns:
+              n.write_text(ns.replace(old, new, 1))
+          elif 'HasValidProofOfWork(headers, m_chainparams.GetConsensus(), pindexPrev)' not in ns:
+              raise SystemExit('CheckHeadersPoW call site not found')
 
           d = Path('doc/randomx-consensus-validation.md')
-          d.write_text('''# RandomX consensus validation\n\nRandomX replaces SHA-256d only for proof-of-work. CBlockHeader::GetHash() remains the SHA-256d block identifier.\n\nPoW is checked contextually because the RandomX key schedule requires the previous chain state and block height.\n''')
+          d.write_text('''# RandomX consensus validation
+
+RandomX replaces SHA-256d only for proof-of-work. CBlockHeader::GetHash() remains the SHA-256d block identifier.
+
+PoW is checked contextually because the RandomX key schedule requires the previous chain state and block height.
+''')
+
       - name: Commit patched consensus validation
         shell: bash
         run: |
@@ -74,3 +149,9 @@ jobs:
           git fetch origin master
           git rebase origin/master
           git push origin HEAD:master
+
+      - name: Configure build
+        run: cmake -S . -B build -DBUILD_TESTS=ON -DWITH_ZMQ=OFF
+
+      - name: Build
+        run: cmake --build build -j2 --target bitcoind bitcoin-cli
