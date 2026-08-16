@@ -36,6 +36,17 @@ BOOST_AUTO_TEST_CASE(project_mainnet_genesis)
     BOOST_CHECK(consensus.defaultAssumeValid.IsNull());
     BOOST_CHECK(consensus.script_flag_exceptions.empty());
     BOOST_CHECK(consensus.BIP34Hash.IsNull());
+    BOOST_CHECK_EQUAL(chain_params->MessageStart()[0], 0xd3);
+    BOOST_CHECK_EQUAL(chain_params->MessageStart()[1], 0x0a);
+    BOOST_CHECK_EQUAL(chain_params->MessageStart()[2], 0xa3);
+    BOOST_CHECK_EQUAL(chain_params->MessageStart()[3], 0xda);
+    BOOST_CHECK_EQUAL(chain_params->GetDefaultPort(), 36660);
+    BOOST_CHECK_EQUAL(chain_params->Bech32HRP(), "w6");
+    BOOST_CHECK_EQUAL(consensus.BIP34Height, 1);
+    BOOST_CHECK_EQUAL(consensus.BIP65Height, 1);
+    BOOST_CHECK_EQUAL(consensus.BIP66Height, 1);
+    BOOST_CHECK_EQUAL(consensus.CSVHeight, 1);
+    BOOST_CHECK_EQUAL(consensus.SegwitHeight, 0);
 }
 
 /* Test calculation of next difficulty target with no constraints applying */
