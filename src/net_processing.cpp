@@ -2858,8 +2858,18 @@ void PeerManagerImpl::SendBlockTransactions(CNode& pfrom, Peer& peer, const CBlo
 
 bool PeerManagerImpl::CheckHeadersPoW(const std::vector<CBlockHeader>& headers, Peer& peer)
 {
-    // Do these headers have proof-of-work matching what's claimed?
-    if (!HasValidProofOfWork(headers, m_chainparams.GetConsensus())) {
+    const CBlockIndex* pindexPrev = nullptr;
+    {
+        LOCK(cs_main);
+        if (!headers.empty()) {
+            pindexPrev = m_chainman.m_blockman.LookupBlockIndex(headers.front().hashPrevBlock);
+        }
+    }
+
+    // Do these headers have proof-of-work matching what's claimed? RandomX
+    // PoW is context-dependent, so unconnecting headers are deferred until
+    // their previous block is known.
+    if (!HasValidProofOfWork(headers, m_chainparams.GetConsensus(), pindexPrev)) {
         Misbehaving(peer, "header with invalid proof of work");
         return false;
     }

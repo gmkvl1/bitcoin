@@ -37,6 +37,7 @@
 #include <policy/settings.h>
 #include <policy/truc_policy.h>
 #include <pow.h>
+#include <randomx_pow.h>
 #include <primitives/block.h>
 #include <primitives/transaction.h>
 #include <random.h>
@@ -3841,10 +3842,13 @@ void ChainstateManager::ReceivedBlockTransactions(const CBlock& block, CBlockInd
 
 static bool CheckBlockHeader(const CBlockHeader& block, BlockValidationState& state, const Consensus::Params& consensusParams, bool fCheckPOW = true)
 {
-    // Check proof of work matches claimed amount
-    if (fCheckPOW && !CheckProofOfWork(block.GetHash(), block.nBits, consensusParams))
-        return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "high-hash", "proof of work failed");
-
+    // PoW is context-dependent for this chain because RandomX uses the
+    // consensus key schedule derived from the previous chain state.
+    // ContextualCheckBlockHeader() performs the actual PoW check.
+    (void)block;
+    (void)state;
+    (void)consensusParams;
+    (void)fCheckPOW;
     return true;
 }
 
@@ -4032,10 +4036,25 @@ void ChainstateManager::GenerateCoinbaseCommitment(CBlock& block, const CBlockIn
     UpdateUncommittedBlockStructures(block, pindexPrev);
 }
 
-bool HasValidProofOfWork(std::span<const CBlockHeader> headers, const Consensus::Params& consensusParams)
+bool HasValidProofOfWork(std::span<const CBlockHeader> headers, const Consensus::Params& consensusParams, const CBlockIndex* pindexPrev)
 {
-    return std::ranges::all_of(headers,
-                               [&](const auto& header) { return CheckProofOfWork(header.GetHash(), header.nBits, consensusParams); });
+    if (headers.empty()) return true;
+    if (!pindexPrev) return true; // Unconnecting headers cannot yet resolve the RandomX key schedule.
+
+    std::vector<CBlockIndex> synthetic;
+    synthetic.reserve(headers.size());
+    const CBlockIndex* prev = pindexPrev;
+    for (const CBlockHeader& header : headers) {
+        synthetic.emplace_back(header);
+        CBlockIndex* current = &synthetic.back();
+        current->pprev = prev;
+        current->nHeight = prev->nHeight + 1;
+        if (!CheckRandomXProofOfWork(header, header.nBits, consensusParams, prev, current->nHeight)) {
+            return false;
+        }
+        prev = current;
+    }
+    return true;
 }
 
 bool IsBlockMutated(const CBlock& block, bool check_witness_root)
@@ -4097,10 +4116,14 @@ static bool ContextualCheckBlockHeader(const CBlockHeader& block, BlockValidatio
     assert(pindexPrev != nullptr);
     const int nHeight = pindexPrev->nHeight + 1;
 
-    // Check proof of work
+    // Check proof-of-work target and RandomX proof. The target/difficulty
+    // calculation remains Bitcoin's 2016-block retarget rule; only the PoW
+    // function is replaced by RandomX.
     const Consensus::Params& consensusParams = chainman.GetConsensus();
     if (block.nBits != GetNextWorkRequired(pindexPrev, &block, consensusParams))
         return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "bad-diffbits", "incorrect proof of work");
+    if (!CheckRandomXProofOfWork(block, block.nBits, consensusParams, pindexPrev, nHeight))
+        return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "high-hash", "proof of work failed");
 
     // Check timestamp against prev
     if (block.GetBlockTime() <= pindexPrev->GetMedianTimePast())
